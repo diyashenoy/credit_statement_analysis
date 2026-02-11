@@ -1,618 +1,579 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import plotly.express as px
-import plotly.graph_objects as go
+import altair as alt
+
+from sklearn.linear_model import LogisticRegression, LinearRegression
+from sklearn.tree import DecisionTreeClassifier
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder, StandardScaler
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
-from sklearn.cluster import KMeans
-import re
-from datetime import datetime
-import warnings
-warnings.filterwarnings('ignore')
+from sklearn.metrics import accuracy_score, r2_score
 
-# Bank of America Color Palette
-BOA_COLORS = {
-    'primary_red': '#E31837',
-    'dark_blue': '#012169',
-    'light_blue': '#0073CF',
-    'gray': '#6E7780',
-    'light_gray': '#F5F5F5',
-    'white': '#FFFFFF',
-    'success_green': '#00A758',
-    'warning_orange': '#FF6B35'
-}
+# ===========================
+# Color Palette
+# ===========================
+RUBY_RED = "#970C28"
+DARK_CYAN = "#008B8B"
+MINT_CREAM = "#F4FFFD"
+PRUSSIAN_BLUE = "#011936"
+CHARCOAL = "#465362"
 
-# Configure page
+CHART_PRIMARY = PRUSSIAN_BLUE
+CHART_SECONDARY = DARK_CYAN
+
+# ===========================
+# Page Config
+# ===========================
 st.set_page_config(
-    page_title="Smart Spending Insights",
-    page_icon="💳",
+    page_title="Spend Insights",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 
-# Custom CSS with BofA colors
-st.markdown(f"""
+# ===========================
+# Global Styles
+# ===========================
+st.markdown(
+    f"""
     <style>
-    .main {{
-        background-color: {BOA_COLORS['white']};
-    }}
-    .stButton>button {{
-        background-color: {BOA_COLORS['primary_red']};
-        color: white;
-        border-radius: 5px;
-        padding: 10px 24px;
-        font-weight: 600;
-        border: none;
-        width: 100%;
-    }}
-    .stButton>button:hover {{
-        background-color: {BOA_COLORS['dark_blue']};
-    }}
-    .upload-section {{
-        background-color: {BOA_COLORS['light_gray']};
-        padding: 30px;
-        border-radius: 10px;
-        border: 2px dashed {BOA_COLORS['gray']};
-        text-align: center;
-    }}
-    .metric-card {{
-        background-color: {BOA_COLORS['light_gray']};
-        padding: 20px;
-        border-radius: 8px;
-        border-left: 4px solid {BOA_COLORS['primary_red']};
-    }}
-    .insight-card {{
-        background-color: {BOA_COLORS['light_blue']}15;
-        padding: 15px;
-        border-radius: 8px;
-        border-left: 4px solid {BOA_COLORS['light_blue']};
-        margin: 10px 0;
-    }}
-    .header-text {{
-        color: {BOA_COLORS['dark_blue']};
-        font-weight: 700;
-    }}
-    .subheader-text {{
-        color: {BOA_COLORS['gray']};
-    }}
-    h1, h2, h3 {{
-        color: {BOA_COLORS['dark_blue']};
-    }}
+        @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
+
+        * {{
+            font-family: 'IBM Plex Sans', sans-serif;
+        }}
+
+        .stApp {{
+            background: linear-gradient(135deg, {MINT_CREAM} 0%, #E8FBF8 100%);
+        }}
+
+        .block-container {{
+            max-width: 1200px;
+            padding: 3rem 2rem 5rem 2rem;
+        }}
+
+        .hero {{
+            background: linear-gradient(135deg, {PRUSSIAN_BLUE}, #023859);
+            padding: 4rem 3rem;
+            border-radius: 24px;
+            color: white;
+            margin-bottom: 3rem;
+        }}
+
+        .hero h1 {{
+            font-family: 'DM Serif Display', serif;
+            font-size: 3.5rem;
+            margin: 0;
+        }}
+
+        .hero p {{
+            font-size: 1.25rem;
+            opacity: 0.85;
+            margin-top: 1rem;
+        }}
+
+        .section-title {{
+            font-family: 'DM Serif Display', serif;
+            font-size: 2rem;
+            color: {PRUSSIAN_BLUE};
+            margin-bottom: 1.5rem;
+            margin-top: 2rem;
+        }}
+
+        .insight {{
+            background: linear-gradient(135deg, {DARK_CYAN}, #6FDADA);
+            border-left: 6px solid {RUBY_RED};
+            border-radius: 16px;
+            padding: 2rem;
+            margin-bottom: 1.5rem;
+        }}
+
+        .insight p {{
+            font-size: 1.1rem;
+            font-weight: 500;
+            color: white;
+            margin: 0;
+        }}
+
+        .stat {{
+            background: linear-gradient(135deg, {PRUSSIAN_BLUE}, #023859);
+            border-radius: 16px;
+            padding: 2rem;
+            text-align: center;
+            color: white;
+        }}
+
+        .stat-label {{
+            text-transform: uppercase;
+            font-size: 0.8rem;
+            letter-spacing: 0.1em;
+            opacity: 0.7;
+        }}
+
+        .stat-value {{
+            font-family: 'DM Serif Display', serif;
+            font-size: 3rem;
+            margin-top: 0.5rem;
+        }}
+
+        .muted {{
+            color: {CHARCOAL};
+            font-size: 0.95rem;
+        }}
+
+        .chart-container {{
+            background: white;
+            padding: 2rem;
+            border-radius: 20px;
+            box-shadow: 0 8px 32px rgba(1,25,54,0.08);
+            margin: 1.5rem 0;
+        }}
+
+        /* Remove Streamlit white box artifacts */
+        [data-testid="stFileUploader"],
+        [data-testid="stFileUploadDropzone"],
+        .element-container,
+        [data-testid="stVerticalBlock"],
+        [data-testid="stHorizontalBlock"],
+        [data-testid="column"],
+        [data-testid="stVegaLiteChart"],
+        [data-testid="stMetric"],
+        .stContainer {{
+            background: transparent !important;
+        }}
+
+        /* Style metrics */
+        [data-testid="stMetricValue"] {{
+            font-size: 1.5rem;
+            color: {PRUSSIAN_BLUE};
+        }}
+
+        [data-testid="stMetricLabel"] {{
+            color: {CHARCOAL};
+        }}
+
+        /* Style dataframes */
+        [data-testid="stDataFrame"] {{
+            background: white;
+        }}
     </style>
-""", unsafe_allow_html=True)
+    """,
+    unsafe_allow_html=True
+)
 
+# ===========================
+# Hero
+# ===========================
+st.markdown(
+    """
+    <div class="hero">
+        <h1>Spend Insights</h1>
+        <p>Understand your spending patterns at a glance</p>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
 
-def categorize_transaction(description):
-    """Automatically categorize transactions based on merchant name"""
-    description = description.upper()
-    
-    categories = {
-        'Food & Dining': ['DOORDASH', 'UBER *EATS', 'DOMINO', 'CHIPOTLE', 'RESTAURANT', 
-                          'CAFE', 'FOOD', 'TACO', 'PIZZA', 'BURGER', 'KITCHEN', 'RISTORA'],
-        'Transportation': ['UBER *TRIP', 'TRANSIT', 'DELTA AIR', 'AIRLINE', 'PARKING'],
-        'Shopping': ['AMAZON', 'SURF STYLE', 'MICHAELS'],
-        'Groceries': ['AMAZON GROCE', 'SAFEWAY', 'QFC', 'MAYURI FOODS', 'GROCERY'],
-        'Health & Wellness': ['CVS', 'WALGREENS', 'PHARMACY', 'WELLNESS', 'SPA', 'ZOOMCARE'],
-        'Entertainment': ['NETFLIX', 'SPOTIFY', 'LIV MIAMI', 'CLUB'],
-        'Fitness': ['EQUINOX', 'GYM'],
-        'Insurance': ['LEMONADE INSURANCE'],
-        'Utilities': ['SEATTLE CITY LIGHT', 'ELECTRIC', 'WATER', 'GAS'],
-        'Subscriptions': ['APPLE.COM', 'NETFLIX', 'SPOTIFY', 'CHATGPT', 'OPENAI'],
-        'Personal Care': ['NAILS', 'SALON', 'PARFUM', 'BEAUTY']
-    }
-    
-    for category, keywords in categories.items():
-        for keyword in keywords:
-            if keyword in description:
-                return category
-    
-    return 'Other'
+# ===========================
+# Upload Section
+# ===========================
+with st.container():
+    st.markdown('<div class="section-title">Upload your statement</div>', unsafe_allow_html=True)
 
-
-def parse_credit_card_statement(df):
-    """Parse and clean credit card statement data"""
-    try:
-        # Identify relevant columns
-        required_cols = []
-        
-        # Find date column
-        date_cols = [col for col in df.columns if 'date' in col.lower() or 'transaction' in col.lower()]
-        # Find description column
-        desc_cols = [col for col in df.columns if 'merchant' in col.lower() or 'description' in col.lower()]
-        # Find amount column
-        amount_cols = [col for col in df.columns if 'amount' in col.lower() or '$' in col.lower()]
-        
-        if not date_cols or not desc_cols or not amount_cols:
-            return None, "Could not identify required columns (Date, Description, Amount)"
-        
-        # Create standardized dataframe
-        clean_df = pd.DataFrame()
-        clean_df['Date'] = pd.to_datetime(df[date_cols[0]], errors='coerce')
-        clean_df['Description'] = df[desc_cols[0]].astype(str)
-        clean_df['Amount'] = pd.to_numeric(df[amount_cols[0]], errors='coerce')
-        
-        # Remove payment rows
-        clean_df = clean_df[~clean_df['Description'].str.contains('Payment|PAYMENT', case=False, na=False)]
-        
-        # Remove rows with missing critical data
-        clean_df = clean_df.dropna(subset=['Date', 'Amount'])
-        
-        # Only keep purchases (negative amounts or positive based on context)
-        clean_df['Amount'] = clean_df['Amount'].abs()
-        clean_df = clean_df[clean_df['Amount'] > 0]
-        
-        # Add category
-        clean_df['Category'] = clean_df['Description'].apply(categorize_transaction)
-        
-        # Add additional features
-        clean_df['Month'] = clean_df['Date'].dt.strftime('%Y-%m')
-        clean_df['Day_of_Week'] = clean_df['Date'].dt.day_name()
-        clean_df['Is_Weekend'] = clean_df['Date'].dt.dayofweek.isin([5, 6]).astype(int)
-        
-        return clean_df, None
-        
-    except Exception as e:
-        return None, f"Error parsing file: {str(e)}"
-
-
-def train_spending_pattern_models(df):
-    """Train multiple ML models to predict spending categories"""
-    
-    # Prepare features
-    feature_df = df.copy()
-    
-    # Create features
-    le_dow = LabelEncoder()
-    feature_df['Day_of_Week_Encoded'] = le_dow.fit_transform(feature_df['Day_of_Week'])
-    
-    # Features: Amount, Is_Weekend, Day_of_Week
-    X = feature_df[['Amount', 'Is_Weekend', 'Day_of_Week_Encoded']]
-    y = feature_df['Category']
-    
-    # Encode target
-    le_category = LabelEncoder()
-    y_encoded = le_category.fit_transform(y)
-    
-    # Split data
-    X_train, X_test, y_train, y_test = train_test_split(X, y_encoded, test_size=0.2, random_state=42)
-    
-    # Scale features
-    scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
-    X_test_scaled = scaler.transform(X_test)
-    
-    models = {}
-    results = {}
-    
-    # Model 1: Logistic Regression
-    st.write("🔄 Training Logistic Regression...")
-    lr_model = LogisticRegression(max_iter=1000, random_state=42)
-    lr_model.fit(X_train_scaled, y_train)
-    lr_pred = lr_model.predict(X_test_scaled)
-    lr_accuracy = accuracy_score(y_test, lr_pred)
-    
-    models['Logistic Regression'] = lr_model
-    results['Logistic Regression'] = {
-        'accuracy': lr_accuracy,
-        'predictions': lr_pred,
-        'model': lr_model
-    }
-    
-    # Model 2: Random Forest
-    st.write("🔄 Training Random Forest...")
-    rf_model = RandomForestClassifier(n_estimators=100, random_state=42)
-    rf_model.fit(X_train, y_train)
-    rf_pred = rf_model.predict(X_test)
-    rf_accuracy = accuracy_score(y_test, rf_pred)
-    
-    models['Random Forest'] = rf_model
-    results['Random Forest'] = {
-        'accuracy': rf_accuracy,
-        'predictions': rf_pred,
-        'feature_importance': rf_model.feature_importances_,
-        'model': rf_model
-    }
-    
-    # Model 3: Gradient Boosting
-    st.write("🔄 Training Gradient Boosting...")
-    gb_model = GradientBoostingClassifier(n_estimators=100, random_state=42)
-    gb_model.fit(X_train, y_train)
-    gb_pred = gb_model.predict(X_test)
-    gb_accuracy = accuracy_score(y_test, gb_pred)
-    
-    models['Gradient Boosting'] = gb_model
-    results['Gradient Boosting'] = {
-        'accuracy': gb_accuracy,
-        'predictions': gb_pred,
-        'feature_importance': gb_model.feature_importances_,
-        'model': gb_model
-    }
-    
-    return results, le_category, scaler, X_test, y_test
-
-
-def main():
-    # Header
-    st.markdown(f"""
-        <h1 style='color: {BOA_COLORS['dark_blue']}; text-align: center;'>
-            💳 Smart Spending Insights
-        </h1>
-        <p style='text-align: center; color: {BOA_COLORS['gray']}; font-size: 18px;'>
-            Transform your credit card statements into actionable insights
-        </p>
-    """, unsafe_allow_html=True)
-    
-    st.markdown("---")
-    
-    # Step 1: Upload Section
-    st.markdown(f"""
-        <div class='upload-section'>
-            <h2 style='color: {BOA_COLORS['dark_blue']}'>📁 Upload Your Statement</h2>
-            <p style='color: {BOA_COLORS['gray']}'>
-                Upload your credit card statement (CSV or Excel format)<br>
-                <small>Supported formats: .csv, .xlsx, .xls</small>
-            </p>
-        </div>
-    """, unsafe_allow_html=True)
-    
-    st.markdown("<br>", unsafe_allow_html=True)
-    
     uploaded_file = st.file_uploader(
-        "Choose a file",
-        type=['csv', 'xlsx', 'xls'],
-        help="Upload your credit card statement in CSV or Excel format"
+        "Upload CSV",
+        type=["csv"],
+        label_visibility="collapsed"
     )
-    
-    if uploaded_file is not None:
-        # Step 2: Validate and Parse
-        with st.spinner('📊 Reading and validating your file...'):
-            try:
-                if uploaded_file.name.endswith('.csv'):
-                    df_raw = pd.read_csv(uploaded_file)
-                else:
-                    df_raw = pd.read_excel(uploaded_file)
-                
-                st.success("✅ File uploaded successfully!")
-                
-                # Show raw data preview
-                with st.expander("📄 Preview Raw Data"):
-                    st.dataframe(df_raw.head(10), use_container_width=True)
-                
-            except Exception as e:
-                st.error(f"❌ Error reading file: {str(e)}")
-                return
-        
-        # Parse the data
-        with st.spinner('🔍 Parsing transactions...'):
-            df_clean, error = parse_credit_card_statement(df_raw)
-            
-            if error:
-                st.error(f"❌ {error}")
-                st.info("💡 Please ensure your file has columns for Date, Description, and Amount")
-                return
-            
-            st.success(f"✅ Successfully parsed {len(df_clean)} transactions!")
-        
-        # Step 3: Categorize and Display Overview
-        st.markdown("---")
-        st.markdown(f"<h2 class='header-text'>📊 Spending Overview</h2>", unsafe_allow_html=True)
-        
-        col1, col2, col3, col4 = st.columns(4)
-        
-        total_spent = df_clean['Amount'].sum()
-        avg_transaction = df_clean['Amount'].mean()
-        num_transactions = len(df_clean)
-        top_category = df_clean.groupby('Category')['Amount'].sum().idxmax()
-        
+
+    st.markdown("<p class='muted'>CSV only. Data is processed locally.</p>", unsafe_allow_html=True)
+
+# ===========================
+# Helper Functions
+# ===========================
+def detect_amount_column(cols):
+    """Detect the amount column in the CSV"""
+    candidates = ["amount", "$ amount", "$ Amount", "charge", "debit"]
+    for c in cols:
+        if c.strip().lower() in [x.lower() for x in candidates]:
+            return c
+    return None
+
+# ===========================
+# Main Logic
+# ===========================
+if uploaded_file:
+    df = pd.read_csv(uploaded_file)
+
+    # Detect and clean amount column
+    amount_col = detect_amount_column(df.columns)
+    if not amount_col:
+        st.error("Could not find transaction amount column.")
+        st.stop()
+
+    df[amount_col] = (
+        df[amount_col]
+        .astype(str)
+        .str.replace(",", "", regex=False)
+        .str.replace("$", "", regex=False)
+    )
+    df[amount_col] = pd.to_numeric(df[amount_col], errors="coerce")
+    df = df.dropna(subset=[amount_col])
+
+    df["abs_amount"] = df[amount_col].abs()
+
+    # Calculate summary statistics
+    total_spend = df["abs_amount"].sum()
+    tx_count = len(df)
+    avg_tx = total_spend / tx_count
+    median_spend = df["abs_amount"].median()
+
+    # ===========================
+    # Spending Summary
+    # ===========================
+    with st.container():
+        st.markdown('<div class="section-title">Your Spending Summary</div>', unsafe_allow_html=True)
+
+        col1, col2, col3 = st.columns(3)
+
         with col1:
-            st.markdown(f"""
-                <div class='metric-card'>
-                    <h4 style='color: {BOA_COLORS['gray']}; margin: 0;'>Total Spent</h4>
-                    <h2 style='color: {BOA_COLORS['primary_red']}; margin: 5px 0;'>${total_spent:,.2f}</h2>
-                </div>
-            """, unsafe_allow_html=True)
-        
+            st.markdown(
+                f"<div class='stat'><div class='stat-label'>Total Spent</div><div class='stat-value'>${total_spend:,.0f}</div></div>", 
+                unsafe_allow_html=True
+            )
+
         with col2:
-            st.markdown(f"""
-                <div class='metric-card'>
-                    <h4 style='color: {BOA_COLORS['gray']}; margin: 0;'>Transactions</h4>
-                    <h2 style='color: {BOA_COLORS['dark_blue']}; margin: 5px 0;'>{num_transactions}</h2>
-                </div>
-            """, unsafe_allow_html=True)
-        
+            st.markdown(
+                f"<div class='stat'><div class='stat-label'>Transactions</div><div class='stat-value'>{tx_count}</div></div>", 
+                unsafe_allow_html=True
+            )
+
         with col3:
-            st.markdown(f"""
-                <div class='metric-card'>
-                    <h4 style='color: {BOA_COLORS['gray']}; margin: 0;'>Avg Transaction</h4>
-                    <h2 style='color: {BOA_COLORS['light_blue']}; margin: 5px 0;'>${avg_transaction:,.2f}</h2>
-                </div>
-            """, unsafe_allow_html=True)
+            st.markdown(
+                f"<div class='stat'><div class='stat-label'>Avg Purchase</div><div class='stat-value'>${avg_tx:,.0f}</div></div>", 
+                unsafe_allow_html=True
+            )
+
+    # ===========================
+    # Machine Learning Models
+    # ===========================
+    threshold = 100
+    df["high_spend"] = (df["abs_amount"] > threshold).astype(int)
+
+
+    X = df[["abs_amount"]]
+    y = df["high_spend"]
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.3, random_state=42
+    )
+
+    # Logistic Regression
+    log_model = LogisticRegression()
+    log_model.fit(X_train, y_train)
+    log_accuracy = accuracy_score(y_test, log_model.predict(X_test))
+
+    # Decision Tree
+    tree_model = DecisionTreeClassifier(max_depth=3)
+    tree_model.fit(X_train, y_train)
+    tree_accuracy = accuracy_score(y_test, tree_model.predict(X_test))
+
+    # Linear Regression Trend
+    df["purchase_order"] = np.arange(len(df))
+    lr = LinearRegression()
+    lr.fit(df[["purchase_order"]], df["abs_amount"])
+    trend_coef = lr.coef_[0]
+    r2 = r2_score(df["abs_amount"], lr.predict(df[["purchase_order"]]))
+
+    # ===========================
+    # Key Insights
+    # ===========================
+    with st.container():
+        st.markdown('<div class="section-title">Key Insights</div>', unsafe_allow_html=True)
+
+        high_pct = df["high_spend"].mean() * 100
+
+        # Insight 1: High Spend Analysis
+        st.markdown(
+            f"""
+            <div class="insight">
+                <p>💡 About {high_pct:.1f}% of your purchases fall into a higher spending group.</p>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+        # High spend breakdown
+        high_spend_df = df[df["high_spend"] == 1]
+        normal_spend_df = df[df["high_spend"] == 0]
         
-        with col4:
-            st.markdown(f"""
-                <div class='metric-card'>
-                    <h4 style='color: {BOA_COLORS['gray']}; margin: 0;'>Top Category</h4>
-                    <h2 style='color: {BOA_COLORS['success_green']}; margin: 5px 0;'>{top_category}</h2>
-                </div>
-            """, unsafe_allow_html=True)
+        high_spend_total = high_spend_df["abs_amount"].sum()
+        high_spend_avg = high_spend_df["abs_amount"].mean()
+        high_spend_count = len(high_spend_df)
         
-        st.markdown("<br>", unsafe_allow_html=True)
-        
-        # Spending by Category
+        normal_spend_total = normal_spend_df["abs_amount"].sum()
+        normal_spend_avg = normal_spend_df["abs_amount"].mean()
+        normal_spend_count = len(normal_spend_df)
+
+        # Summary cards
         col1, col2 = st.columns(2)
         
         with col1:
-            st.markdown(f"<h3 class='header-text'>Spending by Category</h3>", unsafe_allow_html=True)
-            category_spending = df_clean.groupby('Category')['Amount'].sum().sort_values(ascending=False)
-            
-            fig_pie = px.pie(
-                values=category_spending.values,
-                names=category_spending.index,
-                title="",
-                color_discrete_sequence=[BOA_COLORS['primary_red'], BOA_COLORS['dark_blue'], 
-                                        BOA_COLORS['light_blue'], BOA_COLORS['success_green'],
-                                        BOA_COLORS['warning_orange'], BOA_COLORS['gray']]
+            st.markdown(
+                f"""
+                <div style="background: linear-gradient(135deg, {DARK_CYAN}, #6FDADA); padding: 1.5rem; border-radius: 12px; color: white; margin-bottom: 1rem;">
+                    <h4 style="margin: 0 0 0.5rem 0; font-size: 1.1rem;">High Spend Purchases</h4>
+                    <p style="margin: 0; font-size: 0.9rem; opacity: 0.9;">{high_spend_count} transactions</p>
+                    <p style="margin: 0.5rem 0 0 0; font-size: 2rem; font-weight: bold;">${high_spend_total:,.0f}</p>
+                    <p style="margin: 0.5rem 0 0 0; font-size: 0.9rem; opacity: 0.9;">Avg: ${high_spend_avg:,.0f} per transaction</p>
+                </div>
+                """,
+                unsafe_allow_html=True
             )
-            fig_pie.update_layout(
-                font=dict(size=12),
-                showlegend=True,
-                height=400
-            )
-            st.plotly_chart(fig_pie, use_container_width=True)
         
         with col2:
-            st.markdown(f"<h3 class='header-text'>Top Spending Categories</h3>", unsafe_allow_html=True)
-            
-            fig_bar = px.bar(
-                x=category_spending.head(8).values,
-                y=category_spending.head(8).index,
-                orientation='h',
-                title="",
-                labels={'x': 'Amount ($)', 'y': 'Category'},
-                color=category_spending.head(8).values,
-                color_continuous_scale=[[0, BOA_COLORS['light_blue']], [1, BOA_COLORS['primary_red']]]
+            st.markdown(
+                f"""
+                <div style="background: linear-gradient(135deg, {PRUSSIAN_BLUE}, #023859); padding: 1.5rem; border-radius: 12px; color: white; margin-bottom: 1rem;">
+                    <h4 style="margin: 0 0 0.5rem 0; font-size: 1.1rem;">Normal Spend Purchases</h4>
+                    <p style="margin: 0; font-size: 0.9rem; opacity: 0.9;">{normal_spend_count} transactions</p>
+                    <p style="margin: 0.5rem 0 0 0; font-size: 2rem; font-weight: bold;">${normal_spend_total:,.0f}</p>
+                    <p style="margin: 0.5rem 0 0 0; font-size: 0.9rem; opacity: 0.9;">Avg: ${normal_spend_avg:,.0f} per transaction</p>
+                </div>
+                """,
+                unsafe_allow_html=True
             )
-            fig_bar.update_layout(
-                showlegend=False,
-                height=400,
-                yaxis={'categoryorder': 'total ascending'}
-            )
-            st.plotly_chart(fig_bar, use_container_width=True)
+
+        # Top high spend transactions
+        st.markdown('<h4 style="margin-top: 2rem; margin-bottom: 1rem; color: ' + PRUSSIAN_BLUE + ';">Top 10 Highest Purchases</h4>', unsafe_allow_html=True)
         
-        # Spending Over Time
-        st.markdown(f"<h3 class='header-text'>Spending Trends</h3>", unsafe_allow_html=True)
+        top_transactions = high_spend_df.nlargest(10, "abs_amount")
         
-        daily_spending = df_clean.groupby('Date')['Amount'].sum().reset_index()
+        # Check what columns are available
+        display_cols = ["abs_amount"]
+        col_names = {"abs_amount": "Amount"}
         
-        fig_line = px.line(
-            daily_spending,
-            x='Date',
-            y='Amount',
-            title="",
-            labels={'Amount': 'Daily Spending ($)', 'Date': 'Date'}
+        # Add optional columns if they exist
+        if "Description" in df.columns or "description" in df.columns:
+            desc_col = "Description" if "Description" in df.columns else "description"
+            display_cols.insert(0, desc_col)
+            col_names[desc_col] = "Description"
+        
+        if "Category" in df.columns or "category" in df.columns:
+            cat_col = "Category" if "Category" in df.columns else "category"
+            display_cols.append(cat_col)
+            col_names[cat_col] = "Category"
+        
+        if "Date" in df.columns or "date" in df.columns or "Transaction Date" in df.columns:
+            date_col = next((c for c in ["Date", "date", "Transaction Date"] if c in df.columns), None)
+            if date_col:
+                display_cols.insert(0, date_col)
+                col_names[date_col] = "Date"
+        
+        # Format the table
+        top_display = top_transactions[display_cols].copy()
+        top_display = top_display.rename(columns=col_names)
+        
+        if "Amount" in top_display.columns:
+            top_display["Amount"] = top_display["Amount"].apply(lambda x: f"${x:,.2f}")
+        
+        st.dataframe(
+            top_display,
+            use_container_width=True,
+            hide_index=True
         )
-        fig_line.update_traces(line_color=BOA_COLORS['primary_red'], line_width=2)
-        fig_line.update_layout(height=400)
-        st.plotly_chart(fig_line, use_container_width=True)
-        
-        # Step 4: Machine Learning Analysis
-        st.markdown("---")
-        st.markdown(f"<h2 class='header-text'>🤖 AI-Powered Analysis</h2>", unsafe_allow_html=True)
-        st.markdown(f"<p style='color: {BOA_COLORS['gray']}'>Running multiple machine learning models to analyze your spending patterns...</p>", unsafe_allow_html=True)
-        
-        if st.button("🚀 Run AI Analysis", use_container_width=True):
-            with st.spinner('Training AI models...'):
-                results, le_category, scaler, X_test, y_test = train_spending_pattern_models(df_clean)
+
+        # Category breakdown if category exists
+        if "Category" in df.columns or "category" in df.columns:
+            cat_col = "Category" if "Category" in df.columns else "category"
             
-            st.success("✅ AI analysis complete!")
+            st.markdown('<h4 style="margin-top: 2rem; margin-bottom: 1rem; color: ' + PRUSSIAN_BLUE + ';">High Spend by Category</h4>', unsafe_allow_html=True)
             
-            # Model Performance Comparison
-            st.markdown(f"<h3 class='header-text'>Model Performance Comparison</h3>", unsafe_allow_html=True)
+            category_spend = high_spend_df.groupby(cat_col)["abs_amount"].agg([
+                ('Total', 'sum'),
+                ('Count', 'count'),
+                ('Average', 'mean')
+            ]).reset_index()
             
-            model_comparison = pd.DataFrame({
-                'Model': list(results.keys()),
-                'Accuracy': [results[model]['accuracy'] for model in results.keys()]
-            }).sort_values('Accuracy', ascending=False)
+            category_spend = category_spend.sort_values('Total', ascending=False).head(10)
+            category_spend.columns = ['Category', 'Total Spent', 'Transactions', 'Avg per Transaction']
             
-            col1, col2 = st.columns([1, 2])
+            # Format currency
+            category_spend['Total Spent'] = category_spend['Total Spent'].apply(lambda x: f"${x:,.0f}")
+            category_spend['Avg per Transaction'] = category_spend['Avg per Transaction'].apply(lambda x: f"${x:,.0f}")
             
-            with col1:
-                st.markdown("<br>", unsafe_allow_html=True)
-                for idx, row in model_comparison.iterrows():
-                    st.markdown(f"""
-                        <div class='metric-card'>
-                            <h4 style='color: {BOA_COLORS['gray']}; margin: 0;'>{row['Model']}</h4>
-                            <h2 style='color: {BOA_COLORS['primary_red']}; margin: 5px 0;'>{row['Accuracy']:.1%}</h2>
-                            <p style='color: {BOA_COLORS['gray']}; font-size: 12px; margin: 0;'>Accuracy Score</p>
-                        </div>
-                        <br>
-                    """, unsafe_allow_html=True)
+            st.dataframe(
+                category_spend,
+                use_container_width=True,
+                hide_index=True
+            )
             
-            with col2:
-                fig_comparison = px.bar(
-                    model_comparison,
-                    x='Accuracy',
-                    y='Model',
-                    orientation='h',
-                    title="Model Accuracy Comparison",
-                    labels={'Accuracy': 'Accuracy Score', 'Model': 'Model'},
-                    color='Accuracy',
-                    color_continuous_scale=[[0, BOA_COLORS['light_blue']], [1, BOA_COLORS['success_green']]]
+            # Category chart
+            cat_chart_data = high_spend_df.groupby(cat_col)["abs_amount"].sum().reset_index()
+            cat_chart_data = cat_chart_data.sort_values("abs_amount", ascending=False).head(8)
+            cat_chart_data.columns = ["Category", "Amount"]
+            
+            category_chart = (
+                alt.Chart(cat_chart_data)
+                .mark_bar()
+                .encode(
+                    x=alt.X("Amount:Q", title="Total Spent ($)"),
+                    y=alt.Y("Category:N", sort="-x", title="Category"),
+                    color=alt.value(DARK_CYAN)
                 )
-                fig_comparison.update_layout(
-                    showlegend=False,
-                    height=400,
-                    xaxis_tickformat='.0%'
-                )
-                st.plotly_chart(fig_comparison, use_container_width=True)
+                .properties(height=300)
+            )
             
-            # Feature Importance (for tree-based models)
-            st.markdown(f"<h3 class='header-text'>What Drives Your Spending?</h3>", unsafe_allow_html=True)
-            
-            feature_names = ['Transaction Amount', 'Weekend Spending', 'Day of Week']
-            
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                if 'feature_importance' in results['Random Forest']:
-                    importance_df = pd.DataFrame({
-                        'Feature': feature_names,
-                        'Importance': results['Random Forest']['feature_importance']
-                    }).sort_values('Importance', ascending=False)
-                    
-                    fig_importance = px.bar(
-                        importance_df,
-                        x='Importance',
-                        y='Feature',
-                        orientation='h',
-                        title="Random Forest - Feature Importance",
-                        color='Importance',
-                        color_continuous_scale=[[0, BOA_COLORS['light_blue']], [1, BOA_COLORS['primary_red']]]
-                    )
-                    fig_importance.update_layout(showlegend=False, height=300)
-                    st.plotly_chart(fig_importance, use_container_width=True)
-            
-            with col2:
-                if 'feature_importance' in results['Gradient Boosting']:
-                    importance_df = pd.DataFrame({
-                        'Feature': feature_names,
-                        'Importance': results['Gradient Boosting']['feature_importance']
-                    }).sort_values('Importance', ascending=False)
-                    
-                    fig_importance = px.bar(
-                        importance_df,
-                        x='Importance',
-                        y='Feature',
-                        orientation='h',
-                        title="Gradient Boosting - Feature Importance",
-                        color='Importance',
-                        color_continuous_scale=[[0, BOA_COLORS['light_blue']], [1, BOA_COLORS['primary_red']]]
-                    )
-                    fig_importance.update_layout(showlegend=False, height=300)
-                    st.plotly_chart(fig_importance, use_container_width=True)
-            
-            # Step 5: Insights
-            st.markdown("---")
-            st.markdown(f"<h2 class='header-text'>💡 Key Insights</h2>", unsafe_allow_html=True)
-            
-            # Generate insights
-            insights = []
-            
-            # Top spending category
-            top_cat_amount = category_spending.iloc[0]
-            top_cat_name = category_spending.index[0]
-            insights.append(f"Your highest spending is in **{top_cat_name}** at **${top_cat_amount:,.2f}**, representing {(top_cat_amount/total_spent)*100:.1f}% of total spending.")
-            
-            # Weekend vs Weekday
-            weekend_spending = df_clean[df_clean['Is_Weekend'] == 1]['Amount'].sum()
-            weekday_spending = df_clean[df_clean['Is_Weekend'] == 0]['Amount'].sum()
-            weekend_days = df_clean[df_clean['Is_Weekend'] == 1]['Date'].nunique()
-            weekday_days = df_clean[df_clean['Is_Weekend'] == 0]['Date'].nunique()
-            
-            if weekend_days > 0 and weekday_days > 0:
-                avg_weekend = weekend_spending / weekend_days
-                avg_weekday = weekday_spending / weekday_days
-                if avg_weekend > avg_weekday:
-                    insights.append(f"You tend to spend more on weekends (**${avg_weekend:.2f}**/day) compared to weekdays (**${avg_weekday:.2f}**/day).")
-                else:
-                    insights.append(f"Your weekday spending (**${avg_weekday:.2f}**/day) is higher than weekend spending (**${avg_weekend:.2f}**/day).")
-            
-            # High-value transactions
-            high_value_threshold = df_clean['Amount'].quantile(0.9)
-            high_value_count = len(df_clean[df_clean['Amount'] > high_value_threshold])
-            insights.append(f"You have **{high_value_count}** high-value transactions (over ${high_value_threshold:.2f}) that account for a significant portion of your spending.")
-            
-            # Most frequent category
-            most_frequent_cat = df_clean['Category'].mode()[0]
-            freq_count = len(df_clean[df_clean['Category'] == most_frequent_cat])
-            insights.append(f"**{most_frequent_cat}** is your most frequent spending category with **{freq_count}** transactions.")
-            
-            for idx, insight in enumerate(insights, 1):
-                st.markdown(f"""
-                    <div class='insight-card'>
-                        <h4 style='color: {BOA_COLORS['dark_blue']}; margin: 0 0 10px 0;'>Insight #{idx}</h4>
-                        <p style='color: {BOA_COLORS['gray']}; margin: 0;'>{insight}</p>
-                    </div>
-                """, unsafe_allow_html=True)
-            
-            # Step 6: Suggestions
-            st.markdown("---")
-            st.markdown(f"<h2 class='header-text'>🎯 Suggested Actions</h2>", unsafe_allow_html=True)
-            st.markdown(f"<p style='color: {BOA_COLORS['gray']}'>Based on your spending patterns, here are some suggestions to consider:</p>", unsafe_allow_html=True)
-            
-            suggestions = []
-            
-            # Suggestion based on top category
-            if top_cat_name in ['Food & Dining', 'Shopping']:
-                suggestions.append(f"Consider setting a monthly budget for **{top_cat_name}** to track this major expense category.")
-            
-            # Subscription check
-            subscription_cats = df_clean[df_clean['Category'] == 'Subscriptions']
-            if len(subscription_cats) > 0:
-                sub_total = subscription_cats['Amount'].sum()
-                suggestions.append(f"Review your **${sub_total:.2f}** in subscriptions. Cancel any services you're not actively using.")
-            
-            # Weekend spending
-            if 'avg_weekend' in locals() and avg_weekend > avg_weekday * 1.3:
-                suggestions.append(f"Your weekend spending is notably higher. Planning weekend activities with a budget in mind could help reduce costs.")
-            
-            # Small frequent purchases
-            small_purchases = df_clean[df_clean['Amount'] < 20]
-            if len(small_purchases) > 20:
-                small_total = small_purchases['Amount'].sum()
-                suggestions.append(f"You have **{len(small_purchases)}** small purchases totaling **${small_total:.2f}**. These add up quickly – consider consolidating shopping trips.")
-            
-            for idx, suggestion in enumerate(suggestions, 1):
-                st.markdown(f"""
-                    <div style='background-color: {BOA_COLORS['success_green']}15; padding: 15px; border-radius: 8px; 
-                                border-left: 4px solid {BOA_COLORS['success_green']}; margin: 10px 0;'>
-                        <p style='color: {BOA_COLORS['dark_blue']}; margin: 0; font-weight: 500;'>
-                            ✓ {suggestion}
-                        </p>
-                    </div>
-                """, unsafe_allow_html=True)
-            
-            # Detailed breakdown
-            st.markdown("---")
-            st.markdown(f"<h3 class='header-text'>📋 Detailed Transaction View</h3>", unsafe_allow_html=True)
-            
-            with st.expander("View All Transactions"):
-                display_df = df_clean[['Date', 'Description', 'Category', 'Amount']].sort_values('Date', ascending=False)
-                st.dataframe(
-                    display_df.style.format({'Amount': '${:.2f}'}),
-                    use_container_width=True,
-                    height=400
-                )
-    
-    else:
-        # Show instructions when no file uploaded
-        st.info("👆 Upload your credit card statement to get started")
+            st.markdown('<div class="chart-container">', unsafe_allow_html=True)
+            st.altair_chart(category_chart, use_container_width=True)
+            st.markdown('</div>', unsafe_allow_html=True)
         
-        st.markdown(f"""
-            <div style='background-color: {BOA_COLORS['light_gray']}; padding: 20px; border-radius: 10px; margin-top: 20px;'>
-                <h3 style='color: {BOA_COLORS['dark_blue']}'>How It Works</h3>
-                <ol style='color: {BOA_COLORS['gray']}'>
-                    <li><strong>Upload</strong> your credit card statement (CSV or Excel)</li>
-                    <li><strong>Validate</strong> - We'll automatically parse your transactions</li>
-                    <li><strong>Categorize</strong> - AI groups your spending into categories</li>
-                    <li><strong>Analyze</strong> - Three ML models analyze your spending patterns</li>
-                    <li><strong>Insights</strong> - Get actionable insights and suggestions</li>
-                </ol>
-                
-                <h4 style='color: {BOA_COLORS['dark_blue']}; margin-top: 20px;'>What You'll Get</h4>
-                <ul style='color: {BOA_COLORS['gray']}'>
-                    <li>📊 Visual spending breakdowns by category</li>
-                    <li>🤖 AI-powered spending pattern analysis</li>
-                    <li>💡 Personalized insights about your habits</li>
-                    <li>🎯 Actionable suggestions to optimize spending</li>
-                </ul>
+        # Spending distribution comparison
+        st.markdown('<h4 style="margin-top: 2rem; margin-bottom: 1rem; color: ' + PRUSSIAN_BLUE + ';">Spending Distribution Comparison</h4>', unsafe_allow_html=True)
+        
+        spend_counts = df["high_spend"].value_counts().rename(
+            {0: "Normal Spend", 1: "High Spend"}
+        ).reset_index()
+        spend_counts.columns = ["Spend Type", "Count"]
+
+        spend_chart = (
+            alt.Chart(spend_counts)
+            .mark_bar()
+            .encode(
+                x=alt.X("Spend Type:N", title="Spend Type"),
+                y=alt.Y("Count:Q", title="Number of Transactions"),
+                color=alt.Color(
+                    "Spend Type:N",
+                    scale=alt.Scale(
+                        domain=["Normal Spend", "High Spend"],
+                        range=[CHART_PRIMARY, CHART_SECONDARY]
+                    ),
+                    legend=None
+                )
+            )
+            .properties(height=250)
+        )
+
+        st.markdown('<div class="chart-container">', unsafe_allow_html=True)
+        st.altair_chart(spend_chart, use_container_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        # Key takeaway
+        pct_of_total = (high_spend_total / total_spend) * 100
+        st.markdown(
+            f"""
+            <div style="background: #FFF3CD; border-left: 4px solid #FFC107; padding: 1rem; border-radius: 8px; margin-top: 1rem;">
+                <p style="margin: 0; color: #856404; font-weight: 500;">
+                    💰 Your high-spend purchases represent {high_pct:.1f}% of transactions but account for {pct_of_total:.1f}% of your total spending.
+                </p>
             </div>
-        """, unsafe_allow_html=True)
+            """,
+            unsafe_allow_html=True
+        )
+
+        st.markdown("<hr style='margin: 2rem 0; border: none; border-top: 1px solid #E0E0E0;'>", unsafe_allow_html=True)
+
+        # Insight 2: Decision Tree Threshold
+        # The decision tree is trained to classify purchases above the
+        # fixed business threshold of $100 as "high spend".
+        # We are NOT extracting a learned threshold from the tree.
+        # We are visualizing the $100 rule directly.
+
+        st.markdown(
+            f"""
+            <div class="insight">
+                <p>📌 Purchases above ${threshold:,.0f} tend to fall into the higher spending group.</p>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+        # Visual explanation:
+        # - Scatter plot of all purchases
+        # - Vertical rule at $100 threshold
+        # This shows how the classification boundary works.
+
+        threshold_line = alt.Chart(
+            pd.DataFrame({"Threshold": [threshold]})
+        ).mark_rule(
+            color=RUBY_RED,
+            strokeWidth=3
+        ).encode(
+            x="Threshold:Q"
+        )
+
+        scatter = alt.Chart(df).mark_circle(
+            size=60,
+            opacity=0.5
+        ).encode(
+            x=alt.X("abs_amount:Q", title="Purchase Amount ($)"),
+            y=alt.Y("high_spend:N", title="High Spend Group"),
+            color=alt.Color(
+                "high_spend:N",
+                scale=alt.Scale(
+                    domain=[0, 1],
+                    range=[CHART_PRIMARY, CHART_SECONDARY]
+                ),
+                legend=None
+            )
+        )
+
+        decision_tree_chart = (scatter + threshold_line).properties(height=300)
+
+        st.markdown('<div class="chart-container">', unsafe_allow_html=True)
+        st.altair_chart(decision_tree_chart, use_container_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        # Show model accuracy
+        st.metric("Decision Tree Accuracy", f"{tree_accuracy:.2f}")
+
+        st.markdown(
+            "<p class='muted'>The decision tree predicts whether a purchase exceeds the $100 threshold based on transaction size.</p>",
+            unsafe_allow_html=True
+        )
 
 
-if __name__ == "__main__":
-    main()
+
+        # Insight 3: Spending Trend
+        st.markdown(
+            f"""
+            <div class="insight">
+                <p>📈 Overall spending is {"increasing" if trend_coef > 0 else "stable or decreasing"} over time.</p>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+        # Prepare trend data
+        trend_df = df[["purchase_order", "abs_amount"]].copy()
+        trend_df["Trend"] = lr.predict(df[["purchase_order"]])
+
+        # Trend chart
+        trend_chart = (
+            alt.Chart(trend_df)
+            .transform_fold(
+                ["abs_amount", "Trend"],
+                as_=["Series", "Value"]
+            )
+            .mark_line(strokeWidth=3)
+            .encode(
+                x=alt.X("purchase_order:Q", title="Transaction Order"),
+                y=alt.Y("Value:Q", title="Amount ($)"),
+                color=alt.Color(
+                    "Series:N",
+                    scale=alt.Scale(
+                        domain=["abs_amount", "Trend"],
+                        range=[CHART_PRIMARY, CHART_SECONDARY]
+                    ),
+                    legend=alt.Legend(title="Series")
+                )
+            )
+            .properties(height=300)
+        )
+
+        st.markdown('<div class="chart-container">', unsafe_allow_html=True)
+        st.altair_chart(trend_chart, use_container_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        st.metric("Trend R² Score", f"{r2:.2f}")
+        
+        # Add bottom spacing so content is fully visible
+        st.markdown('<div style="padding-bottom: 4rem;"></div>', unsafe_allow_html=True)
